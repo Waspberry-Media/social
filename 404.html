@@ -197,14 +197,14 @@ async function renderPost(id) {
     const p = data.data;
     const div = document.createElement('div');
     div.className = 'card';
-    div.innerHTML = `<h2>${p.author}</h2><p>${p.content}</p><p>Likes: ${p.likes}</p>`;
+    div.innerText = `${p.author} | ${p.content} | Likes: ${p.likes}`;
     if (p.replies.length) {
         const repliesDiv = document.createElement('div');
-        repliesDiv.innerHTML = `<h3>Replies</h3>`;
+        repliesDiv.innerText = `Replies`;
         p.replies.forEach(r => {
             const rDiv = document.createElement('div');
             rDiv.className = 'card';
-            rDiv.innerHTML = `<strong>${r.author}</strong>: ${r.content}`;
+            rDiv.innerHTML = `${r.author}: ${r.content}`;
             repliesDiv.appendChild(rDiv);
         });
         div.appendChild(repliesDiv);
