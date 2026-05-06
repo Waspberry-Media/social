@@ -1,1 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Waxmos</title>
+<style>
+    body {
+        margin: 0;
+        font-family: "Helvetica Neue", Arial, sans-serif;
+        background-color: #121212;
+        color: #e0e0e0;
+        display: flex;
+        height: 100vh;
+    }
 
+    #sidebar {
+        width: 220px;
+        background-color: #1e1e1e;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        box-sizing: border-box;
+        overflow-y: auto;
+    }
+
+    #sidebar a {
+        color: #00bfa5;
+        text-decoration: none;
+        padding: 5px 6px;
+        border-radius: 3px;
+    }
+
+    #sidebar a:hover {
+        background-color: #333;
+    }
+
+    .cities-list {
+        margin-top: 20px;
+    }
+
+    .cities-list a {
+        display: block;
+        color: #ffca28;
+        padding: 2px 4px;
+        font-size: 0.9em;
+    }
+
+    #content {
+        flex: 1;
+        padding: 15px;
+        overflow-y: auto;
+    }
+
+    h1, h2, h3 {
+        margin: 0 0 8px 0;
+    }
+
+    .card {
+        background-color: #1c1c1c;
+        padding: 10px;
+        margin-bottom: 8px;
+        border-radius: 4px;
+    }
+
+    button {
+        background-color: #ff7043;
+        color: #fff;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 2px;
+        margin-top: 5px;
+    }
+
+    button:hover {
+        background-color: #ff5722;
+    }
+
+    input, textarea {
+        width: 100%;
+        padding: 6px;
+        margin: 4px 0;
+        background-color: #2c2c2c;
+        color: #fff;
+        border: 1px solid #333;
+        border-radius: 2px;
+    }
+
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+    <a href="/">Home</a>
+    <a href="/messages">Messages</a>
+    <a href="/customize">Edit Profile</a>
+    <div class="cities-list" id="cities"></div>
+</div>
+
+<div id="content">
+    <p>Loading...</p>
+</div>
+
+<script>
+const apiBase = 'https://c9v96x-5000.csb.app/api';
+const contentDiv = document.getElementById('content');
+const citiesDiv = document.getElementById('cities');
+
+function addCityToHistory(city) {
+    if (!city) return;
+    let cities = JSON.parse(localStorage.getItem('lastCities') || '[]');
+    cities = cities.filter(c => c !== city); // remove duplicate
+    cities.unshift(city); // newest first
+    if (cities.length > 8) cities = cities.slice(0,8);
+    localStorage.setItem('lastCities', JSON.stringify(cities));
+    renderSidebarCities();
+}
+
+function renderSidebarCities() {
+    const cities = JSON.parse(localStorage.getItem('lastCities') || '[]');
+    citiesDiv.innerHTML = '<strong>Recent Cities</strong>';
+    cities.forEach(city => {
+        const a = document.createElement('a');
+        a.href = `/?city=${encodeURIComponent(city)}`;
+        a.textContent = city;
+        citiesDiv.appendChild(a);
+    });
+}
+
+async function fetchJSON(url, options = {}) {
+    try {
+        const res = await fetch(url, {...options, credentials: 'include'});
+        return await res.json();
+    } catch (e) {
+        return {error: "Failed to fetch"};
+    }
+}
+
+async function renderHome() {
+    const params = new URLSearchParams(window.location.search);
+    const cityFilter = params.get('city');
+    const data = await fetchJSON(`${apiBase}/posts`);
+    if (data.error) {
+        contentDiv.innerHTML = `<p>${data.error}</p>`;
+        return;
+    }
+    contentDiv.innerHTML = '<h1>Home Feed</h1>';
+    data.data
+        .filter(p => !cityFilter || p.city === cityFilter)
+        .slice(0, 30)
+        .forEach(post => {
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `<h3>${post.author} in ${post.city}</h3><p>${post.content}</p>`;
+            div.onclick = () => {
+                window.history.pushState({}, '', `/post/${post.id}`);
+                router();
+                addCityToHistory(post.city);
+            };
+            contentDiv.appendChild(div);
+            addCityToHistory(post.city);
+        });
+}
+
+async function renderProfile(username) {
+    const data = await fetchJSON(`${apiBase}/users/${username}`);
+    if (data.error) {
+        contentDiv.innerHTML = `<p>${data.error}</p>`;
+        return;
+    }
+    const user = data.data;
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+        <h1>@${user.username}</h1>
+        <p>${user.bio || ''}</p>
+        <p>Links: ${user.links.filter(Boolean).map(l => `<a href="${l}" target="_blank">${l}</a>`).join(' | ')}</p>
+        <h3>Posts:</h3>
+    `;
+    user.posts.forEach(p => {
+        const postDiv = document.createElement('div');
+        postDiv.className = 'card';
+        postDiv.textContent = p.content;
+        div.appendChild(postDiv);
+    });
+    contentDiv.innerHTML = '';
+    contentDiv.appendChild(div);
+}
+
+async function renderPost(id) {
+    const data = await fetchJSON(`${apiBase}/posts/${id}`);
+    if (data.error) {
+        contentDiv.innerHTML = `<p>${data.error}</p>`;
+        return;
+    }
+    const p = data.data;
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `<h2>${p.author}</h2><p>${p.content}</p><p>Likes: ${p.likes}</p>`;
+    if (p.replies.length) {
+        const repliesDiv = document.createElement('div');
+        repliesDiv.innerHTML = `<h3>Replies</h3>`;
+        p.replies.forEach(r => {
+            const rDiv = document.createElement('div');
+            rDiv.className = 'card';
+            rDiv.innerHTML = `<strong>${r.author}</strong>: ${r.content}`;
+            repliesDiv.appendChild(rDiv);
+        });
+        div.appendChild(repliesDiv);
+    }
+    contentDiv.innerHTML = '';
+    contentDiv.appendChild(div);
+    addCityToHistory(p.city);
+}
+
+function renderLogin() {
+    contentDiv.innerHTML = `
+        <div class="login">
+            <h1>Login</h1>
+            <input id="login-username" placeholder="Username or Email">
+            <input id="login-password" placeholder="Password" type="password">
+            <button id="login-btn">Login</button>
+            <p id="login-msg"></p>
+        </div>
+    `;
+    document.getElementById('login-btn').onclick = async () => {
+        const username = document.getElementById('login-username').value;
+        const password = document.getElementById('login-password').value;
+        const res = await fetchJSON(`${apiBase}/login`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({username, password})
+        });
+        document.getElementById('login-msg').textContent = res.success ? "Logged in!" : res.error;
+    };
+}
+
+function renderRegister() {
+    contentDiv.innerHTML = `
+        <div class="register">
+            <h1>Register</h1>
+            <input id="reg-username" placeholder="Username">
+            <input id="reg-email" placeholder="Email">
+            <input id="reg-password" placeholder="Password" type="password">
+            <button id="reg-btn">Register</button>
+            <p id="reg-msg"></p>
+        </div>
+    `;
+    document.getElementById('reg-btn').onclick = async () => {
+        const username = document.getElementById('reg-username').value;
+        const email = document.getElementById('reg-email').value;
+        const password = document.getElementById('reg-password').value;
+        const res = await fetchJSON(`${apiBase}/register`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({username, email, password})
+        });
+        document.getElementById('reg-msg').textContent = res.success ? "Registered!" : res.error;
+    };
+}
+
+function renderCustomize() {
+    contentDiv.innerHTML = `
+        <div class="customize">
+            <h1>Edit Profile</h1>
+            <input id="bio" placeholder="Bio">
+            <input id="link1" placeholder="Link 1">
+            <input id="link2" placeholder="Link 2">
+            <input id="link3" placeholder="Link 3">
+            <button id="save-btn">Save</button>
+            <p id="save-msg"></p>
+        </div>
+    `;
+    document.getElementById('save-btn').onclick = async () => {
+        const bio = document.getElementById('bio').value;
+        const link1 = document.getElementById('link1').value;
+        const link2 = document.getElementById('link2').value;
+        const link3 = document.getElementById('link3').value;
+        const username = 'YOUR_LOGGED_IN_USERNAME'; // Replace dynamically
+        const res = await fetchJSON(`${apiBase}/users/${username}`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({bio, link1, link2, link3})
+        });
+        document.getElementById('save-msg').textContent = res.success ? "Saved!" : res.error;
+    };
+}
+
+function renderMessages() {
+    contentDiv.innerHTML = '<h1>Messages</h1><p>Loading...</p>';
+    fetchJSON(`${apiBase}/messages`).then(data => {
+        if (data.error) {
+            contentDiv.innerHTML = `<p>${data.error}</p>`;
+            return;
+        }
+        contentDiv.innerHTML = '<h1>Messages</h1>';
+        data.data.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'message';
+            div.innerHTML = `<strong>${m.from}</strong>: ${m.content}`;
+            contentDiv.appendChild(div);
+        });
+    });
+}
+function router() {
+    renderSidebarCities();
+    const path = window.location.pathname;
+    if (path === '/' || path.startsWith('/?city=')) renderHome();
+    else if (path === '/login') renderLogin();
+    else if (path === '/register') renderRegister();
+    else if (path === '/customize') renderCustomize();
+    else if (path === '/messages') renderMessages();
+    else if (path.startsWith('/@')) renderProfile(path.slice(2));
+    else if (path.startsWith('/post/')) renderPost(path.split('/')[2]);
+    else contentDiv.innerHTML = `<p>404: Page not found</p>`;
+}
+
+window.addEventListener('popstate', router);
+window.addEventListener('load', router);
+</script>
+
+</body>
+</html>
